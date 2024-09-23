@@ -1,0 +1,12 @@
+[package]
+name = "flash-rtmp"
+version = "0.1.0"
+edition = "2021"
+authors = []
+
+[dependencies]
+flash-lso = { path = "/Users/administrator/Documents/GitHub/rust-flash-lso/flash-lso" }
+nom = "7.1.3"
+rand = "0.8.5"
+thiserror = "1.0.63"
+url = "2.5.2"
