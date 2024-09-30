@@ -3,9 +3,9 @@ use nom::number::complete::{be_u16, be_u32};
 use crate::net_connection::packets::UserControlMessage;
 use crate::utils::nom::RTMPResult;
 
-pub struct UCRReader { }
+pub struct UserControlMessageReader { }
 
-impl UCRReader {
+impl UserControlMessageReader {
     pub fn read_stream_begin(payload: &[u8]) -> RTMPResult<'_, UserControlMessage> {
         let (i, stream_id) = be_u32(payload)?;
 
@@ -69,13 +69,13 @@ impl UCRReader {
         let (i, event_type) = be_u16(payload)?;
         
         let (i, user_control_message) = match event_type {
-            0 => UCRReader::read_stream_begin(i)?,
-            1 => UCRReader::read_stream_eof(i)?,
-            2 => UCRReader::read_stream_dry(i)?,
-            3 => UCRReader::read_set_buffer_length(i)?,
-            4 => UCRReader::read_stream_is_recorded(i)?,
-            6 => UCRReader::read_ping_request(i)?,
-            7 => UCRReader::read_ping_response(i)?,
+            0 => UserControlMessageReader::read_stream_begin(i)?,
+            1 => UserControlMessageReader::read_stream_eof(i)?,
+            2 => UserControlMessageReader::read_stream_dry(i)?,
+            3 => UserControlMessageReader::read_set_buffer_length(i)?,
+            4 => UserControlMessageReader::read_stream_is_recorded(i)?,
+            6 => UserControlMessageReader::read_ping_request(i)?,
+            7 => UserControlMessageReader::read_ping_response(i)?,
             _ => unimplemented!("User control message type not implemented, {:?}", event_type),
         };
 

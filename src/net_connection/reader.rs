@@ -2,26 +2,21 @@ use crate::{
     chunk::{
         packets::MessageTypeId,
         reader::RTMPDechunker,
-    },
-    context::NetConnectionContext,
-    net_connection::packets::{
-        AMFCommandMessage, PeerBandwidthLimitType, RTMPMessageType, SetChunkSize, SetPeerBandwidth, WindowAcknowledgementSize
-    },
-    transport::Transport,
-    shared_object::reader::SharedObjectReader
+    }, context::NetConnectionContext, net_connection::{
+        packets::{
+            AMFCommandMessage, PeerBandwidthLimitType, RTMPMessageType, SetChunkSize, SetPeerBandwidth, WindowAcknowledgementSize
+        },
+        user_control_messages::reader::UserControlMessageReader
+    }, shared_object::reader::SharedObjectReader, transport::Transport, utils::nom::RTMPResult, errors::Error
 };
 
 use flash_lso::{
-    types::Value,
-    amf0::read::AMF0Decoder
+    amf0::read::AMF0Decoder, types::Value
 };
 
 use nom::number::complete::{be_u32, be_u8};
 
 use std::rc::Rc;
-
-use super::user_control_messages::reader::UCRReader;
-
 
 #[derive(Debug)]
 
@@ -29,49 +24,28 @@ pub struct RTMPReader {}
 
 impl RTMPReader {
     fn read_window_acknowledgement_size(
-        payload: Vec<u8>
-    ) -> std::io::Result<WindowAcknowledgementSize> {
-        let (_, size) = be_u32(payload.as_slice()).map_err(|e: nom::Err<nom::error::Error<&[u8]>>| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to parse window acknowledgement size: {:?}", e),
-            )
-        })?;
+        payload: &[u8]
+    ) -> RTMPResult<'_, WindowAcknowledgementSize> {
+        let (i, size) = be_u32(payload)?;
 
-        Ok(WindowAcknowledgementSize { size })
+        Ok((i, WindowAcknowledgementSize { size }))
     }
 
-    fn read_set_peer_bandwidth(payload: Vec<u8>) -> std::io::Result<SetPeerBandwidth> {
-        let (i, size) = be_u32(payload.as_slice()).map_err(|e: nom::Err<nom::error::Error<&[u8]>>| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to parse peer bandwidth size: {:?}", e),
-            )
-        })?;
-
-        let (_, bandwidth_limit_byte) = be_u8(i).map_err(|e: nom::Err<nom::error::Error<&[u8]>>| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to parse peer bandwidth limit type: {:?}", e),
-            )
-        })?;
+    fn read_set_peer_bandwidth(payload: &[u8]) -> RTMPResult<'_, SetPeerBandwidth> {
+        let (i, size) = be_u32(payload)?;
+        let (i, bandwidth_limit_byte) = be_u8(i)?;
 
         let limit_type = PeerBandwidthLimitType::try_from(bandwidth_limit_byte)
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid peer bandwidth limit type"))?;
+            .map_err(|_| nom::Err::Failure(Error::IoError("Invalid peer bandwidth limit type".to_string(), std::io::ErrorKind::InvalidData)))?;
 
 
-        Ok(SetPeerBandwidth { size, limit_type })
+        Ok((i, SetPeerBandwidth { size, limit_type }))
     }
 
-    fn read_set_chunk_size(payload: Vec<u8>) -> std::io::Result<SetChunkSize> {
-        let (_, size) = be_u32(payload.as_slice()).map_err(|e: nom::Err<nom::error::Error<&[u8]>>| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to parse chunk size: {:?}", e),
-            )
-        })?;
+    fn read_set_chunk_size(payload: &[u8]) -> RTMPResult<'_, SetChunkSize> {
+        let (i, size) = be_u32(payload)?;
 
-        Ok(SetChunkSize { size })
+        Ok((i, SetChunkSize { size }))
     }
 
     fn read_amf0_command(payload: Vec<u8>) -> std::io::Result<AMFCommandMessage> {
@@ -143,20 +117,23 @@ impl RTMPReader {
 
         let parsed_message = match message.message_type_id {
             MessageTypeId::WindowAcknowledgementSize => {
-                let window_acknowledgement_size = RTMPReader::read_window_acknowledgement_size(message.payload)?;
+                let (_, window_acknowledgement_size) = RTMPReader::read_window_acknowledgement_size(message.payload.as_slice())
+                    .expect("Failed to parse window acknowledgement size");
                 RTMPMessageType::WindowAcknowledgementSize(window_acknowledgement_size)
             }
             MessageTypeId::SetPeerBandwidth => {
-                let set_peer_bandwidth = RTMPReader::read_set_peer_bandwidth(message.payload)?;
+                let (_, set_peer_bandwidth) = RTMPReader::read_set_peer_bandwidth(message.payload.as_slice())
+                    .expect("Failed to parse set peer bandwidth");
                 RTMPMessageType::SetPeerBandwidth(set_peer_bandwidth)
             }
             MessageTypeId::UserControlMessage => {
-                let (_, user_control_message) = UCRReader::read(message.payload.as_slice())
+                let (_, user_control_message) = UserControlMessageReader::read(message.payload.as_slice())
                     .expect("Failed to parse user control message");
                 RTMPMessageType::UserControlMessage(user_control_message)
             }
             MessageTypeId::SetChunkSize => {
-                let chunk_size = RTMPReader::read_set_chunk_size(message.payload)?;
+                let (_, chunk_size) = RTMPReader::read_set_chunk_size(message.payload.as_slice())
+                    .expect("Failed to parse set chunk size");
                 RTMPMessageType::SetChunkSize(chunk_size)
             }
             MessageTypeId::CommandAMF0 => {
@@ -164,7 +141,8 @@ impl RTMPReader {
                 RTMPMessageType::AMF0Command(command)
             }
             MessageTypeId::SharedObjectAMF0 => {
-                let shared_object = SharedObjectReader::new().read(context, message.payload)?;
+                let (_, shared_object) = SharedObjectReader::new().read(context, message.payload.as_slice())
+                    .expect("Failed to parse shared object");
                 RTMPMessageType::AMF3SharedObject(shared_object)
             }
             _ => todo!("Parsing Message type {:?} not implemented", message.message_type_id),

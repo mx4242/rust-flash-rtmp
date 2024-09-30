@@ -35,3 +35,53 @@ pub fn parse_tc_url(tc_url: &str) -> std::io::Result<TcUrl> {
         instance,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_invalid() {
+        assert!(parse_tc_url("rtmp://").is_err());
+    }
+
+    #[test]
+    fn test_app() {
+        let tc_url = parse_tc_url("rtmp://localhost/app").unwrap();
+        assert_eq!(tc_url.protocol, "rtmp");
+        assert_eq!(tc_url.host, "localhost");
+        assert_eq!(tc_url.port, 1935);
+        assert_eq!(tc_url.app, "app");
+        assert_eq!(tc_url.instance, "");
+    }
+
+    #[test]
+    fn test_app_instance() {
+        let tc_url = parse_tc_url("rtmp://localhost/app/instance").unwrap();
+        assert_eq!(tc_url.protocol, "rtmp");
+        assert_eq!(tc_url.host, "localhost");
+        assert_eq!(tc_url.port, 1935);
+        assert_eq!(tc_url.app, "app");
+        assert_eq!(tc_url.instance, "instance");
+    }
+
+    #[test]
+    fn test_custom_port() {
+        let tc_url = parse_tc_url("rtmp://localhost:1936/app/instance").unwrap();
+        assert_eq!(tc_url.protocol, "rtmp");
+        assert_eq!(tc_url.host, "localhost");
+        assert_eq!(tc_url.port, 1936);
+        assert_eq!(tc_url.app, "app");
+        assert_eq!(tc_url.instance, "instance");
+    }
+
+    #[test]
+    fn test_debug_param() {
+        let tc_url = parse_tc_url("rtmp://localhost/app/_definst_%3F%5Ffcs%5Fdebugreq%5F%3D228440").unwrap();
+        assert_eq!(tc_url.protocol, "rtmp");
+        assert_eq!(tc_url.host, "localhost");
+        assert_eq!(tc_url.port, 1935);
+        assert_eq!(tc_url.app, "app");
+        assert_eq!(tc_url.instance, "_definst_%3F%5Ffcs%5Fdebugreq%5F%3D228440");
+    }
+}
